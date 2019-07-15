@@ -1,28 +1,68 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const process = require('process');
+const fs = require('fs'),
+    process = require('process'),
 
-const GREENKEEPER_DEP = process.argv[2] || process.exit(1);
+    // Exit helper function
+    exit = function (err, code) {
+        console.error(err);
+        process.exit(Number.isFinite(code) ? code : (err ? 1 : 0));
+    },
 
-var packageFile = fs.readFileSync('./package.json');
-var package = JSON.parse(packageFile);
+    // Checks if the package has the given dependency
+    packageHasDependency = function (package, dependency) {
+        var dependencyInList = (['dependencies', 'devDependencies'].filter((item) => {
+            if (package[item].hasOwnProperty(dependency)) {
+                return true;
+            }
+            return false;
+        }));
 
-// check if the package has the given dependency
-if (!
-    ((package.dependencies && package.dependencies.hasOwnProperty(GREENKEEPER_DEP))
-    || (package.devDependencies && package.devDependencies.hasOwnProperty(GREENKEEPER_DEP)))){
-    process.exit(2);
-}
+        return dependencyInList.length !== 0;
+    },
 
-if (!package.greenkeeper) {
-    package.greenkeeper = {};
-}
-if (!package.greenkeeper.ignore) {
-    package.greenkeeper.ignore = [];
-}
+    // Adds the given dependency to Greenkeeper's ignore list
+    addDependencyToGreenkeeperIgnore = function (package, dependency) {
+        if (!package.greenkeeper) {
+            package.greenkeeper = {};
+        }
 
-package.greenkeeper.ignore.push(GREENKEEPER_DEP);
+        if (!package.greenkeeper.ignore) {
+            package.greenkeeper.ignore = [];
+        }
 
-// log the new package.json to console
-console.log(JSON.stringify(package, null, 2));
+        package.greenkeeper.ignore.push(dependency);
+    };
+
+
+fs.readFile('./package.json', (err, packageData) => {
+    if (err) {
+        return exit(err);
+    }
+
+    var package,
+        dependencyToIgnore = process.argv && process.argv[2];
+
+    // worst case if dependency itself is missed by user
+    if (!(dependencyToIgnore && (typeof dependencyToIgnore === 'string'))) {
+        return exit('Need argument: dependency to ignore', 1);
+    }
+
+    // we parse json of package data in a try-block to trap scenarios where the
+    // package file contains invalid string content (not JSON)
+    try {
+        package = JSON.parse(packageData);
+    }
+    catch (e) {
+        return exit(e);
+    }
+
+    if (!packageHasDependency(package, dependencyToIgnore)) {
+        return exit('Package does not have the dependency', 2);
+    }
+
+    addDependencyToGreenkeeperIgnore(package, dependencyToIgnore);
+
+    // log the new package.json to console
+    console.log(JSON.stringify(package, null, 2));
+});
